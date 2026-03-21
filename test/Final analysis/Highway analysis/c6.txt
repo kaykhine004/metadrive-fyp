@@ -1,0 +1,164 @@
+policies_order = list(POLICY_SHEETS.keys())
+x = np.arange(len(policies_order))
+width = 0.55
+
+pct_success = []
+pct_fail = []
+pct_timeout = []
+pct_any_crash = []
+for pol in policies_order:
+    sub = all_episodes[all_episodes["policy"] == pol]
+    n = len(sub)
+    if n == 0:
+        pct_success.append(0.0)
+        pct_fail.append(0.0)
+        pct_timeout.append(0.0)
+        pct_any_crash.append(0.0)
+        continue
+    pct_success.append(100.0 * sub["pass_bool"].mean())
+    pct_fail.append(100.0 * (~sub["pass_bool"]).mean())
+    pct_timeout.append(100.0 * sub["timeout_bool"].mean())
+    pct_any_crash.append(100.0 * (sub["crash_count"].fillna(0) > 0).mean())
+
+fig, axes = plt.subplots(2, 2, figsize=(11.5, 9))
+fig.suptitle(
+    "Figure 2 — Detail: success/fail %, timeouts, crash involvement %, trip times",
+    fontsize=13,
+    fontweight="bold",
+    y=1.02,
+)
+
+# --- (0,0) 100% stacked: success % + fail % ---
+ax = axes[0, 0]
+p_ok = np.array(pct_success)
+p_bad = np.array(pct_fail)
+b1 = ax.bar(
+    x,
+    p_ok,
+    width,
+    label="Success % (reached goal)",
+    color="#27ae60",
+    edgecolor="black",
+    linewidth=0.5,
+)
+b2 = ax.bar(
+    x,
+    p_bad,
+    width,
+    bottom=p_ok,
+    label="Fail % (did not reach goal)",
+    color="#e74c3c",
+    edgecolor="black",
+    linewidth=0.5,
+)
+ax.set_xticks(x)
+ax.set_xticklabels(policies_order)
+ax.set_ylabel("Percent of runs (%)")
+ax.set_ylim(0, 100)
+ax.set_title("Success vs fail (each bar = 100% of that policy's runs)")
+ax.legend(loc="upper right", fontsize=8)
+for i in x:
+    ax.text(i, 101, "100%", ha="center", fontsize=8, color="#666")
+
+# --- (0,1) Timeout rate % ---
+ax = axes[0, 1]
+bars = ax.bar(x, pct_timeout, width, color="#f39c12", edgecolor="black", linewidth=0.5)
+ax.set_xticks(x)
+ax.set_xticklabels(policies_order)
+ax.set_ylabel("Percent of runs (%)")
+ax.set_ylim(0, max(105, max(pct_timeout) * 1.15 if pct_timeout else 105))
+ax.set_title("Timeout % (stuck / too slow — cannot finish)")
+for i, b in enumerate(bars):
+    h = b.get_height()
+    ax.text(
+        b.get_x() + b.get_width() / 2,
+        h + 0.8,
+        f"{h:.1f}%",
+        ha="center",
+        va="bottom",
+        fontweight="bold",
+        fontsize=9,
+    )
+ax.text(
+    0.5,
+    -0.16,
+    "Higher % means more runs got stuck (overly cautious or blocked).",
+    transform=ax.transAxes,
+    ha="center",
+    fontsize=8,
+    style="italic",
+    color="#444",
+)
+
+# --- (1,0) % runs with any crash (aggressive = worse) ---
+ax = axes[1, 0]
+worst_i = int(np.argmax(pct_any_crash))
+bar_cols = ["#c0392b" if i == worst_i else POLICY_COLORS[pol] for i, pol in enumerate(policies_order)]
+bars = ax.bar(x, pct_any_crash, width, color=bar_cols, edgecolor="black", linewidth=0.5)
+ax.set_xticks(x)
+ax.set_xticklabels(policies_order)
+ax.set_ylabel("Percent of runs (%)")
+ax.set_ylim(0, 105)
+ax.set_title("Share of runs with >=1 crash (higher = more aggressive / worse)")
+for i, b in enumerate(bars):
+    h = b.get_height()
+    ax.text(
+        b.get_x() + b.get_width() / 2,
+        h + 1.5,
+        f"{h:.1f}%",
+        ha="center",
+        va="bottom",
+        fontsize=10,
+    )
+
+# --- (1,1) Trip time: still in seconds (not %) — only timed successes ---
+ax = axes[1, 1]
+bp_data = [
+    all_episodes.loc[
+        (all_episodes["policy"] == pol) & all_episodes["pass_bool"] & all_episodes["time_to_goal_s"].notna(),
+        "time_to_goal_s",
+    ].to_numpy()
+    for pol in policies_order
+]
+bp = ax.boxplot(bp_data, patch_artist=True, medianprops=dict(color="black", linewidth=2))
+for patch, pol in zip(bp["boxes"], policies_order):
+    patch.set_facecolor(POLICY_COLORS[pol])
+    patch.set_alpha(0.65)
+ax.set_xticks(np.arange(1, len(policies_order) + 1))
+ax.set_xticklabels(policies_order)
+ax.set_ylabel("Time (simulation seconds)")
+ax.set_title("Trip time among successful runs with a recorded time")
+means_t = [np.mean(d) if len(d) else np.nan for d in bp_data]
+ax.scatter(
+    np.arange(1, len(policies_order) + 1),
+    means_t,
+    marker="D",
+    s=55,
+    color="white",
+    edgecolors="black",
+    zorder=3,
+    label="Mean",
+)
+ax.legend(loc="upper right", fontsize=8)
+ax.text(
+    0.5,
+    -0.18,
+    "Seconds, not % — shows how long successful trips take; sample size differs by policy.",
+    transform=ax.transAxes,
+    ha="center",
+    fontsize=8,
+    style="italic",
+    color="#444",
+)
+
+plt.tight_layout()
+plt.show()
+
+print("—" * 60)
+print("Per policy — all rates are % of THAT policy's runs:")
+for i, pol in enumerate(policies_order):
+    print(
+        f"  {pol:16s}  success {pct_success[i]:5.1f}%  fail {pct_fail[i]:5.1f}%  "
+        f"timeout {pct_timeout[i]:5.1f}%  any-crash {pct_any_crash[i]:5.1f}%"
+    )
+print("—" * 60)

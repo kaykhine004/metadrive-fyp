@@ -1,0 +1,6 @@
+## Conclusion based on my above figures
+
+- **Figure 1** (above): overview — success %, % runs with ≥1 crash, average finish time when timed, and the summary **table** (all key % metrics).
+- **Figure 2** (above): **stacked success/fail %**, **timeout %**, **% runs with crashes**, and **trip-time** box plots (seconds, not %).
+
+Run the next cell to generate **numbered answers** using the same data as the charts (updates automatically when you re-run all cells).

@@ -1,0 +1,134 @@
+policies = summary["policy"].tolist()
+colors = [POLICY_COLORS[p] for p in policies]
+
+fig = plt.figure(figsize=(12, 7.5))
+gs = fig.add_gridspec(2, 3, height_ratios=[1.15, 1.0], hspace=0.5, wspace=0.32)
+
+# --- All policy-vs-policy charts use RATES (%) of THAT policy's runs — not raw lap totals ---
+titles = [
+    "Success rate\n(% of runs that reached the destination)",
+    "% of runs with at least one crash\n(higher = more aggressive / worse)",
+    "Average finish time when a time exists\n(sim seconds — lower is quicker)",
+]
+series = [
+    summary["pass_pct"].to_numpy(),
+    summary["pct_runs_with_crash"].to_numpy(),
+    summary["mean_time_success_s"].to_numpy(),
+]
+y_labels = ["Percent (%)", "Percent (%)", "Time (seconds)"]
+
+for i in range(3):
+    ax = fig.add_subplot(gs[0, i])
+    x = np.arange(len(policies))
+    bars = ax.bar(x, series[i], color=colors, edgecolor="black", linewidth=0.7, width=0.6)
+    ax.set_xticks(x)
+    ax.set_xticklabels(policies, fontsize=10)
+    ax.set_ylabel(y_labels[i], fontsize=10)
+    ax.set_title(titles[i], fontsize=11)
+    if i in (0, 1):
+        ax.set_ylim(0, 105)
+        if i == 0:
+            ax.axhline(100, color="#bbb", linestyle="--", linewidth=0.8, zorder=0)
+    top = ax.get_ylim()[1]
+    for j, b in enumerate(bars):
+        h = float(series[i][j])
+        if not np.isfinite(h):
+            continue
+        if i in (0, 1):
+            lab = f"{h:.0f}%"
+        else:
+            lab = f"{h:.1f}"
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            min(h + 0.02 * top, top * 0.98),
+            lab,
+            ha="center",
+            va="bottom",
+            fontsize=11,
+            fontweight="bold",
+        )
+    if i == 2:
+        pct_t = summary["pct_runs_with_finish_time"].to_numpy()
+        for j, b in enumerate(bars):
+            ax.text(
+                b.get_x() + b.get_width() / 2,
+                0.02 * top,
+                f"({pct_t[j]:.0f}% runs have time)",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color="#333",
+            )
+
+# --- Summary table: percentages (fair comparison across different test sizes) ---
+ax_tbl = fig.add_subplot(gs[1, :])
+ax_tbl.axis("off")
+
+rows = []
+for _, row in summary.iterrows():
+    rows.append(
+        [
+            row["policy"],
+            f"{row['pass_pct']:.1f}%",
+            f"{row['fail_pct']:.1f}%",
+            f"{row['timeout_pct']:.1f}%",
+            f"{row['pct_runs_with_crash']:.1f}%",
+            f"{row['pct_runs_with_finish_time']:.1f}%",
+            f"{row['mean_time_success_s']:.1f}" if pd.notna(row["mean_time_success_s"]) else "—",
+        ]
+    )
+
+tbl = ax_tbl.table(
+    cellText=rows,
+    colLabels=[
+        "Policy",
+        "Success %",
+        "Fail %",
+        "Timeout %\n(stuck / too slow)",
+        "% runs with\n>=1 crash",
+        "% runs with\nfinish time",
+        "Avg finish time (s)\n(when timed)",
+    ],
+    loc="center",
+    cellLoc="center",
+    colLoc="center",
+)
+tbl.auto_set_font_size(False)
+tbl.set_fontsize(9)
+tbl.scale(1.02, 2.1)
+
+for (r, c), cell in tbl.get_celld().items():
+    if r == 0:
+        cell.set_facecolor("#34495e")
+        cell.get_text().set_color("white")
+        cell.get_text().set_fontweight("bold")
+
+fig.suptitle(
+    "Figure 1 — Overview: fair comparison using % of each policy's own runs (not raw lap counts)",
+    fontsize=13,
+    fontweight="bold",
+    y=0.98,
+)
+
+plt.show()
+
+# Raw counts (for your appendix / reproducibility only)
+print("Raw run counts (not used in charts): ")
+for _, row in summary.iterrows():
+    print(
+        f"  {row['policy']}: total={int(row['episodes'])}, "
+        f"timed={int(row['n_with_finish_time'])}"
+    )
+
+best_ok = summary.loc[summary["pass_pct"].idxmax(), "policy"]
+safest = summary.loc[summary["pct_runs_with_crash"].idxmin(), "policy"]
+st = summary.dropna(subset=["mean_time_success_s"])
+fastest = st.loc[st["mean_time_success_s"].idxmin(), "policy"] if len(st) else "—"
+lowest_timeout = summary.loc[summary["timeout_pct"].idxmin(), "policy"]
+print("—" * 60)
+print("Quick read (by %):")
+print(f"  • Highest success %: {best_ok}")
+print(f"  • Lowest % runs with crashes: {safest}")
+print(f"  • Lowest timeout %: {lowest_timeout}")
+print(f"  • Shortest avg finish time (among timed runs): {fastest}")
+print("—" * 60)

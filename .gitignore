@@ -54,6 +54,9 @@
 /documentation/source/img.png
 /documentation/source/demo.png
 
+# Office temporary lock files
+**/~$*
+
 # ignore documentation build output
 **/filtered_dataset
 **/semantics.png

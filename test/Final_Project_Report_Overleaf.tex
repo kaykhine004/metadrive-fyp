@@ -1,0 +1,746 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+\setlength{\parindent}{0.5in}
+\setlength{\parskip}{0pt}
+\onehalfspacing
+
+\titleformat{\chapter}[display]
+{\bfseries\centering\Large}
+{Chapter \thechapter}
+{0.5em}
+{\Large}
+
+\titleformat{\section}
+{\bfseries\normalsize}
+{\thesection}
+{0.75em}
+{}
+
+\titleformat{\subsection}
+{\bfseries\normalsize}
+{\thesubsection}
+{0.75em}
+{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false
+}
+
+\newcommand{\pathcell}[2]{\shortstack[l]{\texttt{#1}\\\texttt{#2}}}
+
+\begin{document}
+
+\begin{titlepage}
+    \thispagestyle{empty}
+    \begin{center}
+        \vspace*{0.8cm}
+        \includegraphics[width=0.5\linewidth]{NTU logo.png}\\[3.2cm]
+        {\large PCCDS24-0086\par}
+        \vspace{0.35cm}
+        {\bfseries
+        \large Scenario Generation Methods for Functional Safety Testing Of Automated Driving Systems\par}
+        \vspace{1.4cm}
+        {\large Submitted by: Chaw Kay Khine\par}
+        \vspace{2.3cm}
+        {\normalsize Supervisor: Prof Liu Yang\par}
+        \vspace{0.25cm}
+        {\normalsize Co-supervisor: Wen Bing\par}
+        \vspace{1.8cm}
+        {\normalsize School of Computer Science and Engineering\par}
+        \vspace{1.6cm}
+        {\normalsize A final year project report presented to Nanyang Technological University\par}
+        \vspace{0.2cm}
+        {\normalsize in partial fulfilment of the requirements for the\par}
+        \vspace{0.2cm}
+        {\normalsize Degree of Bachelor of Engineering\par}
+        \vfill
+        {\normalsize 2024/2026\par}
+    \end{center}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\chapter*{Abstract}
+Automated driving systems must be shown to behave safely enough for their intended use. Scenario-based testing supports this goal by exercising the system under controlled conditions that resemble real traffic. Examples include routine urban driving, congested traffic, and more demanding situations, without putting road users at avoidable risk. High-fidelity three-dimensional simulators help because traffic, road layout, and events can be changed in a controlled and repeatable way.
+
+Even with simulation, the set of possible situations is huge. It is not feasible to run every combination. Test design therefore needs ways to select or generate scenarios that matter for functional safety, give enough diversity to cover important behaviours, and avoid unnecessary repetition. Finding critical scenarios that stress the system and reveal weaknesses, while keeping the test campaign efficient, is an active line of work in research and industry.
+
+This project is carried out in Desay's context. It reviews and applies state-of-the-art scenario-based testing methods in simulation, evaluates how well they fit this setting, and identifies limitations when those methods are checked against Desay's requirements. Building on that review, the work explores directions for more efficient generation of critical scenarios, with emphasis on useful coverage rather than purely random sampling.
+
+This report therefore links general ideas in scenario-based safety evaluation to a concrete industrial framing. It presents the methodology, evaluation, and findings on that basis, and states openly what is left for future work.
+
+\vspace{0.5em}
+\noindent\textbf{Keywords:} automated driving systems, functional safety, scenario-based testing, scenario generation, critical scenarios, simulation, diversity, redundancy.
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\clearpage
+\pagenumbering{arabic}
+
+\chapter{Introduction}
+
+\section{Background and Motivation}
+Automated driving systems are expected to support real traffic with an acceptable level of risk. Showing that level in a convincing way is often grouped under functional safety and related testing practice \cite{iso26262,iso21448,sae3016}. Because public-road experiments are costly, slow, and constrained by safety and regulation, simulation is a standard step. High-fidelity three-dimensional simulators allow traffic, geometry, and events to be varied in a controlled way while keeping tests repeatable and measurable \cite{pegasus_method,carla_official,metadrive_docs,metadrive_github}.
+
+Scenario-based testing is a common way to use that capability. Instead of hoping that a long random drive will expose every important failure mode, engineers define situations the system should survive or handle well. These can range from routine urban driving and congested conditions to more demanding cases that stress perception, prediction, or control. The approach is widely discussed in research and industry, and it is not introduced here as a new invention. It is used because it matches how automated driving systems are actually questioned in development and audit-style discussions \cite{openscenario_standard,pegasus_method}.
+
+The practical difficulty is scale. Even inside one simulator, the combination of maps, actors, timings, and disturbances grows very quickly. It is not possible to execute every combination. Test design therefore turns into a search problem in a very large space. Practitioners need sets of scenarios that are relevant for safety, diverse enough to cover different mechanisms of failure, and not full of near-duplicates that waste computation and review time.
+
+This report is placed in Desay's context. The aim is not to restate general theory only, but to connect published state-of-the-art ideas in scenario-based testing to requirements and constraints that matter for that setting.
+
+\section{Problem Statement}
+Scenario-based testing is a standard way to check automated driving systems in simulation, but the space of possible situations is very large. A practical risk is that tests repeat similar cases, miss important failures, or produce a pass rate that looks acceptable until timeouts, contacts, and finish times are inspected separately. For a safety-oriented discussion, the problem is to define logging and metrics that show how a run failed, not only whether it was marked as a pass.
+
+When the same kind of controller is run under different road contexts, such as highway-style flow versus intersection-style crossing, recorded outcomes can change strongly. A single blended score or a short informal demonstration can then hide the main failure mode or give a misleading ranking between policies.
+
+\section{Aim and Objectives}
+\subsection*{Aim}
+The aim of this report is to support functional-safety-oriented discussion for automated driving by using scenario-based tests in simulation, and by studying how outcomes change with scenario context and with the way results are measured.
+
+\subsection*{Objectives}
+The main objective of this project is to develop, implement, and assess an autonomous driving simulation framework in MetaDrive for comparative evaluation of driving policies under different road scenarios, including highway, intersection, and street settings.
+
+\vspace{0.5em}
+The specific objectives are:
+\begin{enumerate}[label=\arabic*.]
+    \item To create and configure three representative simulation scenarios covering different categories of road interaction.
+    \item To implement and test several driving policies.
+    \item To introduce scenario-specific mechanisms where necessary, such as fixed-route multi-agent behaviour and pedestrian-crossing events.
+    \item To collect and export data from repeated simulation episodes for analysis.
+    \item To evaluate and compare policy performance using measures such as completion rate, timeout rate, crash frequency, speed, and travel time.
+    \item To identify the most appropriate policy for each scenario based on the experimental results.
+\end{enumerate}
+
+\section{Research Evolution}
+The evolution of the experimental platform reflects a structured evaluation of simulation tools against the project requirements and resource constraints. Initially, no single simulator was prescribed. The first implementation centred on SUMO for mixed-traffic analysis \cite{sumo,treiber2000congested,sumo_docs}. As the emphasis shifted toward functional-safety-oriented testing, limitations became evident, including limited three-dimensional visualisation for documentation and review, restricted flexibility for generating diverse safety-critical situations, and the absence of an integrated safety test workflow without substantial additional development.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Documentation/FYP_description.png}
+    \caption{Initial platform limitations and project framing.}
+    \label{fig:fyp_description}
+\end{figure}
+
+Subsequently, CARLA was evaluated as a candidate platform owing to its high-fidelity environments and its alignment with sensor-based pipelines commonly reported in the literature \cite{carla,carla_official}. The project therefore standardised on MetaDrive \cite{metadrive,metadrive_docs,metadrive_github}, which provided compositional scenario generation, three-dimensional visualisation suitable for reporting, and iteration times compatible with batched experiments under the available hardware and access arrangements.
+
+\section{Report Structure}
+Chapter 2 reviews background literature and concepts related to autonomous driving evaluation, functional safety, and scenario generation.
+
+Chapter 3 describes the methodology, including simulator selection, scenarios, policies, experimental procedure, and metric definitions.
+
+Chapter 4 presents the system design of the evaluation framework at an architectural level.
+
+Chapter 5 documents the implementation in detail, including representative code, the experimental procedure, and parameter settings.
+
+Chapter 6 presents the results, notebook-based visual analysis, and discussion.
+
+Chapter 7 concludes the report and outlines future work.
+
+\chapter{Literature Review}
+
+\section{Automated Driving System Testing}
+Road testing gives realism but scales poorly for rare or hazardous situations. Simulation is widely used to add repeatability, volume, and access to cases that would be hard to stage on the road. Scenario-based testing means exercising the system through defined situations rather than one undifferentiated long drive \cite{pegasus_method,openscenario_standard}.
+
+\section{Functional Safety Standards}
+ISO 26262 is commonly used when discussing functional safety processes for road vehicles, including hazard analysis and structured verification and validation \cite{iso26262}. ISO 21448 draws attention to risk that arises when the system behaves as intended but still fails to handle the world correctly \cite{iso21448}. SAE J3016 supplies shared definitions for automation levels and related terms \cite{sae3016}.
+
+\section{Scenario Generation Methods}
+Rule-based methods encode constraints from regulations and engineering judgement. Data-driven methods build scenarios from recorded driving. Search-based methods optimise scenario parameters to stress the system. Compositional methods combine smaller elements into full scenarios \cite{pegasus_method,openscenario_standard}. The project does not require choosing one family forever; it requires a method that matches the tool, the time limit, and the evidence the report must show.
+
+\section{Simulation Platform Analysis}
+Various simulation platforms have been developed for automated driving research, each offering different capabilities and trade-offs. CARLA provides realistic urban environments with high-fidelity graphics and comprehensive sensor simulation but requires significant computational resources \cite{carla,carla_official}. SUMO specialises in large-scale traffic simulation but lacks three-dimensional visualisation and advanced physics simulation \cite{sumo,sumo_docs}. MetaDrive distinguishes itself through its focus on AI and autonomy research, offering compositional scenario generation, realistic physics simulation, lightweight design, and comprehensive safety testing features \cite{metadrive,metadrive_docs,metadrive_github}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.78\textwidth]{Documentation/FYP_description.png}
+    \caption{CARLA figure placeholder. Replace with the intended CARLA image in Overleaf if needed.}
+    \label{fig:carla_placeholder}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.78\textwidth]{Documentation/FYP_description.png}
+    \caption{MetaDrive figure placeholder. Replace with the intended MetaDrive image in Overleaf if needed.}
+    \label{fig:metadrive_placeholder}
+\end{figure}
+
+\chapter{Research Methodology and Platform Selection}
+
+\section{Initial Approach with SUMO}
+The research initially employed SUMO as the primary simulation platform for analysing automated vehicle behaviours in mixed traffic environments \cite{sumo,sumo_docs}. The implementation focused on preparation, simulation, and analysis. During preparation, traffic scenarios including lane changes, emergency braking, and intersection navigation were designed. The simulation phase involved implementing automated vehicle features such as adaptive cruise control and executing mixed traffic simulations with data collection on safety, efficiency, and comfort metrics.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Documentation/FYP_description.png}
+    \caption{SUMO vehicle analysis placeholder. Replace with the intended figure from the report assets.}
+    \label{fig:sumo_analysis}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Documentation/FYP_description.png}
+    \caption{SUMO result visualisation placeholder. Replace with the intended figure from the report assets.}
+    \label{fig:sumo_result}
+\end{figure}
+
+\section{Platform Evaluation and Transition}
+Comprehensive evaluation of SUMO's capabilities for functional safety testing revealed limitations that impacted the research objectives. SUMO's two-dimensional visualisation restricted the ability to create realistic driving scenarios with proper depth perception and spatial awareness. The platform's scenario generation capabilities were limited in terms of diversity and complexity for safety-critical situations. SUMO's simplified physics model did not provide the level of realism required for comprehensive functional safety testing, and it lacked built-in features for systematic safety testing and evaluation \cite{sumo_docs}.
+
+These limitations led to evaluation of alternative platforms, with MetaDrive emerging as the most suitable option due to its focus on AI and autonomy research, comprehensive safety testing features, and scenario generation capabilities \cite{carla_official,metadrive_docs,metadrive_github}.
+
+\section{MetaDrive Framework Implementation}
+The transition to MetaDrive enabled implementation of a framework for functional safety testing with significantly enhanced capabilities. MetaDrive's compositional scenario generation allows creation of many scenario variations through systematic combination of road configurations, traffic patterns, and environmental conditions. The platform's realistic physics simulation provides accurate vehicle dynamics, collision detection, and environmental interactions essential for reliable safety assessment. MetaDrive's built-in safety testing features, including the \texttt{SafeMetaDriveEnv} environment, offer comprehensive safety monitoring with collision detection, out-of-bounds detection, and related safety metrics \cite{metadrive,metadrive_docs,metadrive_github}.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{MetaDrive Core Architecture Workflow}
+    \label{tab:metadrive_workflow}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3cm} X}
+        \toprule
+        Component & Description \\
+        \midrule
+        Action Input & Policy outputs steering and throttle or control decisions. \\
+        Simulation Core & Physics, world state updates, traffic interaction, and route logic are processed. \\
+        Sensor Layer & Cameras, LiDAR, and state information are generated from the updated environment. \\
+        Output Layer & Observations, rewards, and termination signals are returned for logging and analysis. \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{SUMO vs MetaDrive Platform Evaluation}
+    \label{tab:sumo_vs_metadrive}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3cm} X X}
+        \toprule
+        Criterion & SUMO & MetaDrive \\
+        \midrule
+        Visualisation & Mainly two-dimensional & Three-dimensional simulation and rendering \\
+        Physics realism & Simplified traffic-oriented dynamics & More suitable for vehicle-level safety experiments \\
+        Scenario generation & Good for traffic flow studies & Strong compositional scenario generation \\
+        Safety testing support & Requires extra workflow development & Better direct support for episode-level safety evaluation \\
+        Iteration speed & Strong for traffic studies & Strong for autonomy-focused simulation under project constraints \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\chapter{System Design}
+
+This chapter explains the design of the evaluation framework before discussing code-level implementation. The main objective of the framework is to compare autonomous driving policies under fixed and repeatable MetaDrive scenarios, so the design must ensure that changes in outcome are caused mainly by policy behaviour rather than by uncontrolled variation in map layout, spawn position, or logging format.
+
+\section{Design Objective}
+The framework is built around one central requirement: every policy should face the same scenario definition, while every experiment should generate outputs that can be compared directly. MetaDrive provides the simulation platform and baseline policies \cite{metadrive,metadrive_docs,metadrive_github}, but the surrounding workflow in this project adds the pieces required for a proper reportable evaluation process:
+
+\begin{itemize}
+    \item consistent scenario configuration,
+    \item clear separation between baseline and project-optimized policies,
+    \item episode-level monitoring for completion, timeout, and collisions, and
+    \item structured workbook export for later notebook-based analysis.
+\end{itemize}
+
+The scope remains simulation-based. The framework is intended to produce repeatable comparative evidence for policy behaviour, not to claim real-world deployment readiness or formal certification.
+
+\section{Overall Architecture}
+The complete workflow can be understood as four connected layers. This layered view is important because it shows that the project is not only a collection of simulator scripts; it is a full experiment pipeline from scenario definition to analysed results.
+
+\begin{enumerate}[label=\textbf{L\arabic*:}, leftmargin=2.2cm]
+    \item \textbf{Scenario layer.} Defines the road network, traffic density, spawn rules, dynamic events, and termination conditions.
+    \item \textbf{Policy layer.} Assigns the controller used by the ego vehicle and, where necessary, the controllers used by surrounding vehicles.
+    \item \textbf{Execution layer.} Runs the simulation step-by-step, monitors collisions and progress, and enforces timeout or stuck-detection logic.
+    \item \textbf{Data layer.} Records one row per episode, exports the results to spreadsheets, and feeds the Jupyter notebook analysis pipeline.
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{0.6em}
+    \textbf{Scenario configuration} $\rightarrow$ \textbf{Policy execution} $\rightarrow$ \textbf{Step monitoring} $\rightarrow$ \textbf{Episode logging} $\rightarrow$ \textbf{Workbook aggregation} $\rightarrow$ \textbf{Notebook analysis}\vspace{0.6em}}}
+    \caption{Logical workflow shared by all experiments in this project.}
+    \label{fig:arch_layers}
+\end{figure}
+
+\section{Scenario Design Choices}
+\subsection{Highway scenario}
+The highway scenario is designed to evaluate longitudinal progress, obstacle response, and recovery from congestion. A fixed procedural map string is used so that every run follows the same road structure. The environment is based on \texttt{SafeMetaDriveEnv}, which provides a suitable safety-oriented evaluation loop and clear episode termination signals \cite{metadrive_docs,metadrive_github}. Inverse traffic, random traffic, accident probability, and static traffic objects are enabled to create a highway task that is neither empty nor fully random.
+
+\subsection{Intersection--roundabout scenario}
+The intersection--roundabout scenario is designed to test interaction at structured conflict points. Instead of using a simple map string, this scenario is built from an explicit chain of procedural blocks: \texttt{FirstPGBlock}, \texttt{InterSection}, \texttt{Straight}, and \texttt{Roundabout}. This design makes the route geometry easy to control. The target vehicle, \texttt{agent0}, always starts from the same entry road and aims for the same roundabout exit, while other vehicles are spawned on interruption routes to create crossing and merging traffic.
+
+\subsection{Street scenario}
+The street scenario is designed to study urban interaction with pedestrians. The map uses a procedural block sequence and custom map logic that inserts crosswalks at selected fractions of the ego route. This is an important design choice: pedestrians are not placed only at the beginning of the episode, but are triggered along the route so that the ego vehicle must react during motion. As a result, the street scenario evaluates not only vehicle-following behaviour but also pedestrian-yield behaviour and route-level speed adaptation.
+
+\section{Policy Ownership and Comparison Logic}
+For this report, three policies are treated as MetaDrive baselines: \texttt{IDMPolicy}, \texttt{ExpertPolicy}, and \texttt{TrajectoryIDMPolicy} \cite{metadrive,metadrive_docs,metadrive_github}. These policies were not authored by this project and therefore serve as the reference point for comparison.
+
+\noindent\textbf{Project-authored or project-optimized components} include the highway \texttt{StuckAwareExpertPolicy}, the highway \texttt{ObstacleAwareTrajectoryIDMPolicy}, custom route and map managers for the intersection--roundabout scenario, the street crosswalk and pedestrian event pipeline, the street \texttt{PedestrianAwareIDMPolicy}, and the PPO-based optimized policy training script. This distinction is critical for correct interpretation: IDM, Expert, and Trajectory represent baseline control families, while the other variants are the result of engineering and optimization performed in this project.
+
+\section{Data Products and Traceability}
+Every batch script produces a structured per-episode record. Typical fields include pass or fail, timeout, crash counts, average speed, and timing information. Because the same field names are reused across scenarios wherever possible, the workbooks can be aggregated directly in notebook analysis without manual relabelling. This traceable experiment structure supports scenario-based comparison in the spirit of systematic validation workflows discussed in autonomous-driving safety literature \cite{pegasus_method,iso26262,iso21448}.
+
+\chapter{Detailed Policy Implementation and Experimental Procedure}
+
+This chapter explains what was actually implemented in code to produce the experiments. It does not repeat the scenario motivation from Chapter~4 or the performance interpretation from Chapter~6. Instead, it focuses on the practical side of the project: what was built, why it was built, and how each implementation was used to generate test data.
+
+\section{What Was Implemented in the Project}
+The repository contains both \textbf{baseline controllers} and \textbf{project-specific implementations}.
+
+\begin{itemize}
+    \item \textbf{Baseline controllers from MetaDrive:} \texttt{IDMPolicy}, \texttt{ExpertPolicy}, and \texttt{TrajectoryIDMPolicy} \cite{metadrive,metadrive_docs,metadrive_github}. These are used as reference policies and are not claimed as original work in this project.
+    \item \textbf{Project-specific work:} the highway \texttt{StuckAwareExpertPolicy}, the highway \texttt{ObstacleAwareTrajectoryIDMPolicy}, the custom route and map-management logic for the intersection--roundabout scenario, the street crosswalk and pedestrian-event pipeline, the street \texttt{PedestrianAwareIDMPolicy}, and the PPO training workflow for an optimized policy on the intersection scenario.
+\end{itemize}
+
+This distinction is important for the report. IDM, Expert, and Trajectory are the baseline families. The optimized or hybrid variants are the actual implementation work added in this project to solve weaknesses observed during testing.
+
+\section{How the Code Was Organized for Testing}
+The code was not written as one single program. Instead, each scenario has its own group of scripts under \texttt{test/Final analysis/}, and each group contains both scenario logic and batch testing logic.
+
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Main implementation folders and what they were used for.}
+    \label{tab:impl_folders}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.0cm} X}
+        \toprule
+        \shortstack[l]{Folder or\\script group} & Purpose \\
+        \midrule
+        \texttt{Highway analysis/} & Highway environment setup, baseline policy tests, and highway-specific hybrid or trajectory variants. \\
+        \texttt{Intersection analysis/} & Custom map generation, fixed-route multi-agent testing, and policy comparisons for the intersection--roundabout task. \\
+        \texttt{Street analysis/} & Urban route generation, crosswalk insertion, pedestrian-event control, and street policy comparisons. \\
+        \pathcell{backup files/}{train\_optimized\_policy.py} & PPO training script for a project-optimized policy on the custom intersection map. \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+In practice, the workflow is simple. First, a scenario script creates the environment and connects a policy to the ego vehicle. Then a batch script runs many episodes, records what happened in each episode, and exports the results to Excel. This is how the project turns implementation code into data that can later be analysed in Jupyter notebooks.
+
+\section{Common Experimental Workflow}
+Although the three scenarios are different, the testing pipeline is the same in all of them:
+
+\begin{enumerate}[label=\arabic*.]
+    \item create the environment with fixed scenario settings;
+    \item attach the selected policy to the ego vehicle;
+    \item reset and run one episode until goal, failure, or timeout;
+    \item read the simulator status at every step to detect progress and collisions;
+    \item store one summary row for that episode;
+    \item repeat the process for multiple episodes and export the results to a workbook.
+\end{enumerate}
+
+This shared workflow is important because it keeps the measurement process consistent. The project is therefore comparing policies under different scenarios, not changing the evaluation method itself from one scenario to another.
+
+\section{Highway Scenario Implementation}
+The highway implementation was written to answer a clear question: \emph{when a vehicle is placed on a fixed highway route with traffic, obstacles, and possible blockage, which controller can continue making progress without becoming trapped or colliding excessively?}
+
+\subsection{What was tested on the highway}
+The highway scripts use \texttt{SafeMetaDriveEnv} with a fixed procedural map string \texttt{CSrRSY\$yRSCR}. Traffic density, spawn position, accident probability, and other settings are fixed in code so that each policy faces the same road and traffic conditions \cite{metadrive_docs,metadrive_github}. This means the highway experiment is not testing route randomness; it is testing controller behaviour under the same repeated task.
+
+Four highway policy cases were prepared:
+
+\begin{itemize}
+    \item \texttt{IDMPolicy} as a reactive baseline,
+    \item \texttt{ExpertPolicy} as a pretrained baseline,
+    \item \texttt{StuckAwareExpertPolicy} as a project hybrid, and
+    \item \texttt{ObstacleAwareTrajectoryIDMPolicy} as a project trajectory-based variant.
+\end{itemize}
+
+\subsection{Why the Expert+IDM highway hybrid was implemented}
+During testing, the built-in Expert policy could become slow or trapped behind traffic and obstacles. The project response was not to replace Expert completely, but to add a recovery mechanism. The idea is simple: let Expert drive normally, but if the vehicle clearly stops making progress, switch to IDM so the episode can continue.
+
+\begin{lstlisting}[caption={Simplified logic of the highway Expert+IDM recovery policy.},label={lst:stuckaware},float=H]
+if Expert is already replaced:
+    use IDM
+
+if speed stays below 8 km/h for 10 steps:
+    switch to IDM
+
+if movement over the last 30 steps is less than 3 m:
+    switch to IDM
+
+otherwise:
+    keep using Expert
+\end{lstlisting}
+
+The reason for using two checks is practical. A speed check catches obvious slowdowns quickly, while a displacement check catches cases where the car is still moving slightly but is effectively stuck. In simple terms, this policy was implemented to test whether the highway Expert baseline could be improved by adding a recovery rule instead of redesigning the whole controller.
+
+\subsection{Why the highway trajectory variant was implemented}
+The second highway extension was written to test a different idea: instead of relying only on local reactive behaviour, can the ego vehicle follow a planned route and only fall back to reactive avoidance when needed?
+
+To do this, the project first builds a \texttt{PointLane} reference path along the shortest route through the highway map. The trajectory policy follows that path in normal conditions. However, if the vehicle becomes stuck, the controller temporarily switches into IDM-style lane-change behaviour. Once the vehicle is moving normally again, it returns to trajectory following.
+
+\begin{lstlisting}[caption={Simplified logic of the highway trajectory recovery policy.},label={lst:trajavoid},float=H]
+follow the planned route by default
+
+if speed stays below 2 km/h for 30 steps:
+    enter IDM-based avoidance mode
+
+if movement recovers and speed stays above 8 km/h for 50 steps:
+    return to route-following mode
+\end{lstlisting}
+
+This implementation is important because it tests whether a structured route helps on the highway, while still preserving a recovery mechanism when the planned path becomes blocked.
+
+\section{Intersection--Roundabout Implementation}
+The intersection--roundabout scenario was implemented to test policy behaviour in a route with several conflict points. The main idea was not just to place cars on a map, but to ensure that the \texttt{target} vehicle always follows the same route while other vehicles still create realistic interaction.
+
+\subsection{Why a custom map was needed}
+The default one-line map-string approach was not sufficient for this scenario because the project needed explicit control over the ego route. For this reason, a custom map was implemented by chaining four blocks in sequence using MetaDrive's procedural map building components \cite{metadrive_docs,metadrive_github}:
+
+\begin{itemize}
+    \item \texttt{FirstPGBlock},
+    \item \texttt{InterSection},
+    \item \texttt{Straight}, and
+    \item \texttt{Roundabout}.
+\end{itemize}
+
+\begin{lstlisting}[caption={Simplified structure of the custom intersection--roundabout map.},label={lst:intersectionmap},float=H]
+target spawn road  -> fixed entry road
+target destination -> fixed roundabout exit
+
+map = FirstPGBlock
+    -> InterSection
+    -> Straight
+    -> Roundabout
+\end{lstlisting}
+
+This custom map was implemented so that \texttt{agent0} always starts at the same entry point and always aims for the same destination. That makes the test fair, because policy differences are not mixed with route randomness.
+
+\subsection{How surrounding traffic was handled}
+The target vehicle is fixed, but the environment is not empty. Extra vehicles are spawned from interruption roads so that crossing, merging, and yielding behaviour can still be tested. This is an important part of the implementation. Without other agents, the scenario would only test route following. With other agents, it tests route following under interaction.
+
+\subsection{How trajectory testing was applied in this scenario}
+In the trajectory version of the intersection script, the project constructs a \texttt{PointLane} route for the target vehicle and stores it in the map manager. The agent manager is then modified so that only \texttt{agent0} receives \texttt{TrajectoryIDMPolicy}. The other vehicles still use \texttt{IDMPolicy}.
+
+This design choice is important because it isolates the policy being studied. The experiment is not asking what happens if \emph{all} cars become trajectory-following cars. It is asking what happens when the \emph{target} ego vehicle uses trajectory-guided control inside realistic surrounding traffic.
+
+\subsection{Why a PPO-optimized policy was also implemented}
+In addition to the baseline comparisons, the project includes a PPO training script in \texttt{train\_optimized\_policy.py}. The purpose of this code is to train a policy directly on the custom intersection route so that the learned controller is rewarded for reaching the goal, maintaining progress, and avoiding crashes or leaving the road. The implementation uses the Stable-Baselines3 reinforcement learning framework, which provides the PPO training interface used in the script \cite{sb3_docs}.
+
+\begin{lstlisting}[caption={Simplified training objective for the project PPO policy.},label={lst:ppoopt},float=H]
+reward =
+    success reward
+  + driving reward
+  + speed reward
+  - crash penalties
+  - out-of-road penalty
+
+train PPO for 500,000 timesteps
+\end{lstlisting}
+
+This PPO policy is part of the implementation contribution of the project, but it is not mixed into the final benchmark table in Chapter~6 because the archived consolidated workbook used for final comparison focuses on IDM, Expert, and Trajectory.
+
+\section{Street Scenario Implementation}
+The street scenario was implemented to test a different kind of problem from the highway and intersection scenarios. Here the question is not only whether the vehicle can follow a route or handle surrounding traffic, but whether it can deal with repeated pedestrian crossings without either colliding or freezing completely.
+
+\subsection{Why the street map needed extra event logic}
+The street scripts use a procedural map sequence, but the key implementation is not the map string alone. The important project work is the crosswalk and pedestrian-event system built on top of MetaDrive's road-network and map APIs \cite{metadrive_docs,metadrive_github}.
+
+Instead of placing one fixed pedestrian event at the beginning of the episode, the project computes the ego route and inserts crosswalks at three route fractions: \texttt{0.34}, \texttt{0.56}, and \texttt{0.78}. This means pedestrian encounters happen at several points during the trip.
+
+\begin{lstlisting}[caption={Simplified idea of the street crosswalk injection logic.},label={lst:streetcrosswalk},float=H]
+find the shortest route from spawn to destination
+measure total route length
+place crosswalk event sites at:
+    34% of route
+    56% of route
+    78% of route
+\end{lstlisting}
+
+This was implemented so that the street scenario could test repeated interaction with vulnerable road users, not just one isolated crossing near the start. In other words, the project is testing whether a controller can remain safe and still continue the trip after several pedestrian-related decisions.
+
+\subsection{Why the Hybrid IDM policy was implemented}
+The built-in IDM baseline is useful for vehicle-following behaviour, but it does not explicitly handle pedestrians as a first-class decision input. That limitation matters in the street scenario because pedestrians are one of the main hazards being tested.
+
+To address this, the project implements \texttt{PedestrianAwareIDMPolicy} in \texttt{street\_HybridIDM.py}. The idea is to keep the general reactive behaviour of IDM, but to extend it so that pedestrian conflicts directly influence speed and steering decisions.
+
+\begin{lstlisting}[caption={Simplified logic of the project Hybrid IDM policy.},label={lst:pedidm},float=H]
+check normal route-following target speed
+look for pedestrians that may cross the ego path
+
+if a pedestrian conflict is predicted:
+    reduce target speed
+    brake earlier if risk is high
+    add a small steering nudge away from the pedestrian
+
+then apply the final steering and acceleration command
+\end{lstlisting}
+
+This is the main street-policy contribution of the project. The goal was not to invent a completely new controller from scratch, but to adapt a strong reactive baseline so that it behaves more appropriately in pedestrian-rich urban testing.
+
+\section{How Episode Data Was Recorded}
+Once a policy was connected to a scenario, the next job of the code was to turn simulator behaviour into reportable data. For this reason, every batch script was written to produce one summary row per episode.
+
+The episode loop follows the same pattern in all scenarios. After each reset, the script steps the environment until one of three things happens: the vehicle reaches the destination, the episode terminates through failure, or the script triggers a timeout condition. During the episode, the script reads the simulator \texttt{info} output and updates counters such as collision count, timeout flag, and average speed.
+
+\begin{lstlisting}[caption={Simplified structure of the per-episode logging logic.},label={lst:logrow},float=H]
+for each episode:
+    reset environment
+    run until goal, failure, or timeout
+    count collisions and progress
+    store:
+        pass / fail
+        timeout flag
+        crash count
+        goal time
+        average speed
+\end{lstlisting}
+
+The reason for storing one row per episode is that it makes later notebook analysis straightforward. Instead of re-running the simulation to answer every question, the project can load the workbooks and compute pass rates, timeout rates, crash statistics, and trip-time statistics directly from the saved rows.
+
+\section{Datasets Produced for Analysis}
+Table~\ref{tab:dataset_inventory} summarises the workbook files that were produced and later used in Chapter~6.
+
+\begin{table}[H]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.12}
+    \caption{Compiled datasets used in the final analysis chapter.}
+    \label{tab:dataset_inventory}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{4.8cm} X}
+        \toprule
+        Scenario & Workbook & \shortstack[l]{Policies /\\rows used} \\
+        \midrule
+        Highway & \pathcell{Highway analysis/}{highway\_analysis\_compilation.xlsx} & IDM (\texttt{n=50}), Expert (\texttt{n=10}), Expert+IDM hybrid (\texttt{n=50}), trajectory variant (\texttt{n=10}). \\
+        Intersection--roundabout & \pathcell{Intersection analysis/}{Intersection\_analysis\_compilation.xlsx} & IDM (\texttt{n=50}), Expert (\texttt{n=39}), TrajectoryIDM (\texttt{n=40}). \\
+        Street & \pathcell{Street analysis/}{street\_analysis\_compilation.xlsx} & Expert (\texttt{n=10}), IDM (\texttt{n=10}), Hybrid IDM using only rows with \texttt{LAP == 1} (\texttt{n=10}). \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+One implementation detail must be stated clearly. In the street notebook, the Hybrid IDM data is filtered to \texttt{LAP == 1}. This means the final comparison uses first-lap attempts rather than every repeated lap stored in the workbook. In addition, the street timeout thresholds are not identical across all scripts, with the IDM batch using a shorter stuck-time rule than the Expert and Hybrid scripts. This does not remove the value of the dataset, but it is part of the implementation context and should be remembered when reading the final comparison.
+
+\section{What the Logged Metrics Mean}
+To avoid repeating the detailed result discussion from Chapter~6, only the meaning of the logged measurements is defined here.
+
+\begin{itemize}
+    \item \textbf{Pass} means the vehicle reached the goal condition for that scenario.
+    \item \textbf{Timeout} means the episode ended because the vehicle failed to make enough progress within the rule used by that script.
+    \item \textbf{Crash count} records how many collision events were detected during the episode.
+    \item \textbf{Goal time} records how long a successful episode took in simulation.
+    \item \textbf{Average speed} records the overall movement quality of the episode.
+\end{itemize}
+
+These fields were chosen because they describe not only whether a policy succeeded, but also \emph{how} it behaved while trying to succeed. That is exactly the type of evidence needed for the notebook analysis in Chapter~6.
+
+\chapter{Results and Discussion}
+
+\section{Analysis Methodology and Notebook Outputs}
+Quantitative results in this chapter are computed from the compiled workbooks described in Chapter~5. The notebook files used for aggregation are \texttt{highway\_policy\_analysis.ipynb}, \texttt{intersection\_policy\_analysis.ipynb}, and \texttt{street\_policy\_comparison\_visualization.ipynb}. Each notebook loads the saved Excel files, standardises the required columns, and calculates pass rate, timeout rate, crash-related indicators, mean speed, and mean goal time.
+
+The notebook structure is important because it determines how the results should be interpreted. The highway notebook is designed as a two-stage analysis. Its first dashboard shows success rate, mean crashes per run, and average finish time together with a numeric summary table. Its second figure then breaks the same data into stacked success-versus-fail percentages, timeout percentage, mean crashes per run, and a trip-time box plot. This is a useful design because raw counts alone can be misleading when one policy has fifty archived runs and another has only ten. The notebook therefore uses percentages of each policy's own runs and mean crashes per run rather than only totals.
+
+The intersection notebook follows a similar structure but uses a slightly different crash emphasis. In the overview dashboard, it plots the percentage of runs with at least one crash rather than only the average crash count. This is a sensible choice for junction analysis because it answers a different question: how often does a policy become involved in at least one conflict episode? The detailed figure then adds success-versus-fail, timeout rate, and trip-time distributions so that the report can distinguish between cautious failure, aggressive success, and balanced performance.
+
+The street notebook is intentionally more targeted than the other two. Instead of starting with a general dashboard, it analyses the street scenario through four safety-and-efficiency lenses: pedestrian crash totals and mean pedestrian crashes, timeout rate, pass rate, and speed among episodes that actually reached the goal. This design reflects the nature of the street task. In an urban pedestrian scenario, the most important question is not only whether the ego finishes the route, but whether it avoids vulnerable road users while doing so.
+
+Another important notebook detail is the selection logic. The street notebook explicitly filters the hybrid sheet to rows with \texttt{LAP == 1}, which means the comparison is based on first-route attempts rather than repeated laps. The analysis below follows that same rule. The figures included in this chapter were generated from the same consolidated workbook data used by those notebooks, so the discussion remains consistent with the notebook outputs even when the report compresses the visuals into one summary figure per scenario.
+
+\section{Overview of Experimental Results}
+The final datasets show that policy performance depends strongly on scenario structure. The same controller family can be reliable in one environment and weak in another, especially when the task shifts from highway flow control to route conflict negotiation or pedestrian interaction.
+
+\begin{table}[H]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.12}
+    \caption{Highway scenario results from the compiled workbook.}
+    \label{tab:highway_results}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.9cm} >{\centering\arraybackslash}p{1.2cm} >{\centering\arraybackslash}p{1.5cm} >{\centering\arraybackslash}p{1.5cm} >{\centering\arraybackslash}p{1.6cm} >{\centering\arraybackslash}p{1.6cm} >{\centering\arraybackslash}X}
+        \toprule
+        Policy & Episodes & \shortstack{Pass\\Rate} & \shortstack{Timeout\\Rate} & \shortstack{Avg. Crash\\Count} & \shortstack{Avg. Speed\\(km/h)} & \shortstack{Avg. Goal\\Time (s)} \\
+        \midrule
+        IDM & 50 & 98.0\% & 2.0\% & 1.04 & 24.52 & 164.82 \\
+        Expert & 10 & 0.0\% & 100.0\% & 1.40 & 3.75 & -- \\
+        Expert+IDM hybrid & 50 & 82.0\% & 18.0\% & 3.52 & 21.13 & 177.37 \\
+        Trajectory+IDM variant & 10 & 90.0\% & 10.0\% & 35.40 & 23.00 & 183.22 \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.12}
+    \caption{Intersection--roundabout results from the compiled workbook.}
+    \label{tab:intersection_results}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.8cm} >{\centering\arraybackslash}p{1.2cm} >{\centering\arraybackslash}p{1.5cm} >{\centering\arraybackslash}p{1.5cm} >{\centering\arraybackslash}p{1.6cm} >{\centering\arraybackslash}p{1.6cm} >{\centering\arraybackslash}X}
+        \toprule
+        Policy & Episodes & \shortstack{Pass\\Rate} & \shortstack{Timeout\\Rate} & \shortstack{Avg. Crash\\Count} & \shortstack{Avg. Speed\\(km/h)} & \shortstack{Avg. Goal\\Time (s)} \\
+        \midrule
+        IDM & 50 & 100.0\% & 0.0\% & 2.82 & 26.10 & 50.60 \\
+        Expert & 39 & 66.7\% & 23.1\% & 1.28 & 16.26 & 59.94 \\
+        TrajectoryIDM & 40 & 90.0\% & 0.0\% & 5.10 & 28.35 & 53.87 \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.12}
+    \caption{Street scenario results from the compiled workbook.}
+    \label{tab:street_results}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.8cm} >{\centering\arraybackslash}p{1.1cm} >{\centering\arraybackslash}p{1.3cm} >{\centering\arraybackslash}p{1.4cm} >{\centering\arraybackslash}p{1.7cm} >{\centering\arraybackslash}p{1.7cm} >{\centering\arraybackslash}X}
+        \toprule
+        Policy & Episodes & \shortstack{Pass\\Rate} & \shortstack{Timeout\\Rate} & \shortstack{Mean Ped.\\Crashes} & \shortstack{Mean Veh.\\Crashes} & \shortstack{Avg. Goal\\Time (s)} \\
+        \midrule
+        Expert & 10 & 90.0\% & 10.0\% & 1.80 & 1.00 & 140.26 \\
+        IDM & 10 & 0.0\% & 100.0\% & 0.00 & 0.00 & -- \\
+        Hybrid IDM (LAP 1) & 10 & 100.0\% & 0.0\% & 0.20 & 4.20 & 148.71 \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Documentation/highway_policy_overview.png}
+    \caption{Workbook-derived highway policy comparison using the same aggregated dataset as the notebook analysis.}
+    \label{fig:highway_overview}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Documentation/intersection_policy_overview.png}
+    \caption{Workbook-derived comparison for the intersection--roundabout scenario.}
+    \label{fig:intersection_overview}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Documentation/street_policy_comparison.png}
+    \caption{Street policy comparison derived from the same workbook data used in the notebook workflow.}
+    \label{fig:street_overview}
+\end{figure}
+
+\section{Highway Scenario Analysis}
+The highway notebook is the clearest example of why a single metric is not enough. In its overview dashboard, IDM immediately stands out as the best-balanced policy: \texttt{98.0\%} success rate, only \texttt{2.0\%} timeout rate, mean crash count \texttt{1.04}, and average goal time \texttt{164.82 s}. The detailed figure supports the same conclusion from a different angle. The stacked success-versus-fail bars show that nearly the entire IDM column is successful, while the timeout subplot confirms that getting stuck is rare. This combination indicates that IDM is not merely safe by slowing down excessively; it is both stable and productive.
+
+The notebook design also makes it easy to diagnose why pure \texttt{ExpertPolicy} is unsuitable on this highway map. The success-versus-fail chart collapses to full failure, and the timeout chart reaches \texttt{100\%}. The policy also has no valid goal-time distribution because it never produces a successful timed completion in the archived data. This absence is itself meaningful: the trip-time box plot cannot compare Expert with the other policies because the policy does not finish. Together with the low average speed of \texttt{3.75 km/h}, the notebook strongly supports the interpretation that Expert is not just slower than IDM; it is fundamentally incompatible with this highway setup.
+
+The project \texttt{Expert+IDM} hybrid shows why the notebook's use of mean crashes per run is useful. If only pass rate were considered, the hybrid would appear to be a strong fix because it improves success from \texttt{0.0\%} to \texttt{82.0\%}. However, the crash panel shows mean crashes rising to \texttt{3.52} per run, and the notebook summary reports that \texttt{100\%} of archived runs contain at least one crash. In other words, the fallback logic solves the non-progress problem much better than pure Expert, but it does not create a clean or low-risk policy. The most likely reason is visible in the implementation itself: the policy still spends part of each episode under Expert control before the IDM handover trigger fires.
+
+The highway trajectory variant is the strongest example of why the notebook normalises by episode. Even though only ten archived trajectory episodes are available, the mean crash bar rises to \texttt{35.40}, which is drastically worse than every other policy even after normalisation. The summary table also shows that all trajectory runs are crash-involved. This means the poor safety outcome is not caused by a larger sample size; it is a property of the policy behaviour itself. The detailed figure therefore leads to a more nuanced conclusion than the pass-rate bar alone: \texttt{90.0\%} completion sounds competitive, but the repeated collision behaviour makes the policy unacceptable as a highway controller.
+
+The reasoning from the highway notebook can therefore be stated clearly. IDM is the best policy because it combines high completion, low timeout rate, and the lowest collision burden among the successful controllers. Expert fails because it cannot recover from obstruction. Expert+IDM partially repairs that weakness, but only after risk has already accumulated. The trajectory variant preserves motion but not safe interaction. This multi-metric reading is exactly why the notebook uses both success-related plots and crash-related plots rather than only one scoreboard.
+
+\section{Intersection--Roundabout Scenario Analysis}
+The intersection notebook is especially useful because it separates \emph{how often} crashes happen from \emph{how many} crashes are logged once a run becomes unsafe. Its overview dashboard uses \texttt{\% of runs with at least one crash}, while the report table also keeps mean crash count. Reading those two measures together gives a more accurate picture of junction behaviour.
+
+IDM remains the strongest overall baseline in this scenario. It achieves \texttt{100.0\%} pass rate with zero timeouts and a mean crash count of \texttt{2.82}. The notebook also shows that around \texttt{66.0\%} of IDM runs contain at least one crash. This combination may look surprising at first, but it reveals something important: IDM almost always completes the route, yet some of those completed runs still involve conflict. In other words, IDM is the most reliable controller here, but not a collision-free one.
+
+Expert behaves much better here than on the highway, and the notebook makes the reason visible. Its stacked success-versus-fail plot is no longer dominated by complete failure, and its crash-incidence metric is the lowest of the three policies at about \texttt{48.7\%} of runs with at least one crash. Its mean crash count is also the lowest, \texttt{1.28}. This means Expert is the least aggressive policy in the intersection scenario. However, the timeout bar remains high at \texttt{23.1\%}, and the pass rate is only \texttt{66.7\%}. The notebook therefore supports a nuanced conclusion: Expert is safer in the sense of lower crash involvement, but it is too cautious or indecisive to be the most useful controller overall.
+
+TrajectoryIDM is more competitive in the intersection notebook than in the highway notebook because the route structure is explicit and short. It records \texttt{90.0\%} pass rate, zero timeouts, and the highest average speed at \texttt{28.35 km/h}. The box plot of successful trip times would therefore place it among the quickest controllers. However, the same notebook shows that around \texttt{62.5\%} of runs contain at least one crash, and the mean crash count rises to \texttt{5.10}. This difference between crash incidence and crash count is important: the percentage of crash-involved runs is not dramatically worse than IDM, but once TrajectoryIDM becomes unsafe, it tends to accumulate more collision events inside the same episode.
+
+This is why the notebook-based reasoning for the intersection scenario cannot stop at ``highest success'' or ``lowest crashes.'' The map favours route-aware controllers because the ego path is fixed, but the surrounding agents still create moving conflict points. Expert reduces aggression but sacrifices too much completion. TrajectoryIDM improves speed and pass rate but pays for it with heavier crash accumulation. IDM is the best compromise because it completes every archived run while keeping collision burden below the trajectory policy.
+
+\section{Street Scenario Analysis}
+The street notebook is the most directly safety-oriented of the three notebooks, and that makes it the most important for this project. Instead of beginning with a generic success dashboard, it first asks the most critical urban question: how many pedestrians were struck under each policy? This order of analysis matters. In a street scenario with crosswalk events, pedestrian impact is a primary failure metric, not a secondary statistic.
+
+The first notebook figure compares total pedestrian crashes and mean pedestrian crashes per episode. Its message is very strong. Expert records \texttt{18} pedestrian crashes across ten episodes, which equals a mean of \texttt{1.80} per episode. The project Hybrid IDM records only \texttt{2} pedestrian crashes across the ten \texttt{LAP == 1} episodes, which equals a mean of \texttt{0.20} per episode. Pure IDM records zero pedestrian crashes, but that result cannot be interpreted on its own because the timeout notebook section shows that IDM is usually not completing the route at all.
+
+The second notebook figure focuses on timeout rate. This is the key to understanding why zero pedestrian crashes for IDM are not enough to claim good performance. The timeout chart shows \texttt{100.0\%} timeout for IDM, compared with \texttt{10.0\%} for Expert and \texttt{0.0\%} for Hybrid IDM. The notebook commentary describes IDM as overly conservative, and the archived data supports that interpretation. In practice, the vehicle appears to stop too often near pedestrians and fails to resume meaningful progress.
+
+The third notebook section then combines pass rate and speed when the goal is reached. This is important because it tests whether the safer policy is only safer by becoming unrealistically slow. The notebook shows that Hybrid IDM still reaches \texttt{100.0\%} pass rate, while Expert reaches \texttt{90.0\%} and IDM reaches \texttt{0.0\%}. Among successful episodes, Expert is slightly faster than Hybrid IDM: mean goal time \texttt{140.26 s} versus \texttt{148.71 s}, with mean goal speeds \texttt{31.24 km/h} and \texttt{28.99 km/h} respectively. This indicates a real trade-off. The hybrid gives up some speed and some travel-time efficiency, but it does so while reducing pedestrian crashes from \texttt{18} total events to only \texttt{2}.
+
+This trade-off is exactly what the street notebook is designed to reveal. Expert is efficient enough to finish most routes, but it is unsafe around pedestrians. IDM is safe in the narrow sense of not contacting pedestrians, but it fails the mission-completion requirement because it stalls. Hybrid IDM is the only policy that produces both full completion and low pedestrian collision totals in the analysed first-lap dataset.
+
+The implementation in Listing~\ref{lst:pedidm} helps explain the result. The project policy changes the decision logic so that pedestrians are treated as direct control constraints rather than ignored side actors. It predicts conflict, lowers target speed, applies stronger braking when necessary, and adds steering nudges away from nearby pedestrians. The notebook outputs therefore support the design intention of the policy: the custom logic is not cosmetic, because it changes the measured safety outcome.
+
+At the same time, the workbook reveals a secondary weakness that the notebook does not foreground as strongly as pedestrian safety. Hybrid IDM records a mean of \texttt{4.20} vehicle crashes per episode, which is much higher than Expert's \texttt{1.00}. This means the policy is not yet globally optimal. It is best interpreted as a scenario-specific safety compromise: far better than Expert for pedestrian protection and far better than IDM for progress, but still requiring improvement in vehicle-to-vehicle interaction.
+
+\noindent\textbf{Important interpretation note:} the street comparison includes two implementation caveats. First, the notebook deliberately filters the hybrid data to \texttt{LAP == 1}, so the comparison is about first-route attempts rather than all recorded laps. Second, the street scripts do not all use the same timeout threshold, with IDM using a shorter stuck timeout than Expert and Hybrid. These caveats do not remove the value of the result, but they should be acknowledged when discussing the exact magnitude of the advantage.
+
+\section{Cross-Scenario Discussion}
+Across all three scenarios, no controller family dominates without qualification. Instead, the results show that policy quality depends on the type of environment being tested.
+
+Plain IDM is the most reliable baseline in the highway and intersection scenarios because those tasks reward continuous reactive behaviour and stable traffic negotiation. Expert is highly scenario-sensitive: it fails badly on the highway, improves in the intersection case, and reaches high completion on the street, but with poor pedestrian safety. Trajectory-based control benefits from clear route geometry, yet it becomes unsafe when obstacle interaction matters more than geometric path tracking.
+
+The project-specific optimizations are therefore most valuable when they target a concrete failure mode. \texttt{StuckAwareExpertPolicy} improves highway completion by addressing expert stagnation. \texttt{PedestrianAwareIDMPolicy} improves urban completion and pedestrian protection by explicitly reasoning about pedestrian conflict. These are meaningful engineering contributions because they move beyond baseline comparison and demonstrate scenario-specific policy improvement.
+
+\section{Main Findings}
+\begin{enumerate}[label=\arabic*.]
+    \item IDM is the strongest baseline controller overall for the highway and intersection--roundabout datasets.
+    \item Pure ExpertPolicy is not suitable for the tested highway configuration, but it becomes more competitive when the route is shorter and more structured.
+    \item The highway Expert+IDM hybrid improves completion over pure Expert, but it still does not outperform plain IDM and remains collision-heavy.
+    \item In the street scenario, the project Hybrid IDM policy provides the best balance between completion and pedestrian safety among the archived datasets, although vehicle collisions remain high.
+    \item The project results show that policy optimization should be scenario-specific rather than assuming one controller family will dominate every road context.
+\end{enumerate}
+
+\chapter{Conclusion and Future Work}
+
+\section{Conclusion}
+This project developed a complete simulation-based framework for evaluating autonomous driving policies in MetaDrive across three scenario categories: highway, intersection--roundabout, and street. The contribution includes not only baseline policy comparison, but also project-authored scenario logic, project-optimized policy wrappers, structured workbook export, and notebook-driven analysis.
+
+The final results show that policy performance is strongly dependent on scenario structure. IDM is the strongest baseline in the highway and intersection scenarios because it provides the most reliable balance between completion and reactive traffic handling. Pure Expert is highly environment-dependent: it fails on the highway, improves in the intersection scenario, and reaches strong completion on the street, but with weak pedestrian safety. The project Hybrid IDM policy is the strongest street result in terms of route completion together with pedestrian protection, which shows that the custom pedestrian-aware control logic is a meaningful implementation contribution.
+
+The project therefore achieves its main objective: it provides a repeatable and evidence-based way to compare autonomous driving policies under multiple scenario types, while also showing that scenario-specific optimization is necessary when default baseline policies are not sufficient.
+
+\section{Limitations of the Current Project}
+Although the project produces useful findings, it also has several limitations. First, the study is entirely simulation-based and does not include real sensors, vehicle hardware, or physical deployment. Second, the archived dataset sizes are not identical across all policy-scenario combinations. Third, the street scripts do not all use the same timeout threshold, which should be standardised in future reruns. Fourth, not every project-optimized policy currently has a matching consolidated result workbook, so some implementation work is documented in Chapter~5 without being included in the final benchmark tables.
+
+\section{Future Work}
+Several next steps would strengthen the project significantly. The first is to rerun the street experiments with fully matched timeout rules and larger sample sizes so that the Hybrid IDM, Expert, and IDM comparison is maximally fair. The second is to generate a consolidated workbook for the PPO-based optimized intersection policy so that the training work can be benchmarked directly against IDM, Expert, and Trajectory.
+
+The project can also be extended by adding denser urban traffic, richer pedestrian behaviours, additional map layouts, and more formal statistical analysis such as confidence intervals or hypothesis tests. Finally, the current logging pipeline already provides a strong base for evaluating future reinforcement learning agents, additional hybrid controllers, or broader safety indicators under the same scenario-based methodology.
+
+\bibliographystyle{IEEEtran}
+\bibliography{Final_Project_Report_References}
+
+\appendix
+\chapter{Overleaf Notes}
+To compile this document in Overleaf:
+\begin{enumerate}[label=\arabic*.]
+    \item Upload this \texttt{.tex} file from \texttt{test/} (or merge paths below if the project root differs).
+    \item Upload \texttt{Final\_Project\_Report\_References.bib} beside the \texttt{.tex} file.
+    \item Upload \texttt{NTU logo.png} at the path referenced on the title page.
+    \item Upload folder \texttt{Documentation/} containing \texttt{highway\_policy\_overview.png}, \texttt{intersection\_policy\_overview.png}, and \texttt{street\_policy\_comparison.png} from \texttt{test/Documentation/}.
+    \item Set the compiler to \texttt{pdfLaTeX} and run \texttt{BibTeX} (or the Overleaf auto-compile equivalent) so IEEEtran citations resolve.
+\end{enumerate}
+
+\end{document}
