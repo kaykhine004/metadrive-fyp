@@ -1,14 +1,5 @@
 #!/usr/bin/env python
-"""
-This script demonstrates how to setup the Safe RL environments with a 2D top-down
-road map overlay displayed inside the same 3D render window (top-left corner).
-START (blue) and END (red) markers are drawn on the map alongside a live green arrow
-tracking the agent.
 
-Please feel free to run this script to enjoy a journey by keyboard! Remember to press H to see help message!
-
-Auto-Drive mode may fail to solve some scenarios due to distribution mismatch.
-"""
 import math
 
 import cv2
@@ -102,10 +93,7 @@ def draw_label(img, px, py, text, bg_color, text_color=(255, 255, 255)):
 
 
 def build_static_map_with_markers(base_img, surface, start_xy, end_xy):
-    """
-    Draw START and END markers on a copy of the base map.
-    This image is stored once per episode — only the agent arrow is redrawn each step.
-    """
+
     img = base_img.copy()
 
     # Convert BGR base map to BGR (base_img is RGB from WorldSurface)
@@ -126,10 +114,7 @@ def build_static_map_with_markers(base_img, surface, start_xy, end_xy):
 
 
 def draw_agent_on_map(marker_img_bgr, surface, agent):
-    """
-    Draw a live green arrow at the agent's current position on top of the
-    pre-rendered marker image (BGR).  Returns a BGR image.
-    """
+
     img = marker_img_bgr.copy()
     px, py = surface.vec2pix(agent.position)
     px = int(np.clip(px, 0, img.shape[1] - 1))
@@ -158,10 +143,7 @@ def numpy_to_texture(img_bgr, tex=None):
 
 
 def create_map_overlay(engine, tex):
-    """
-    Pin the map texture as an OnscreenImage in the top-left of the render window.
-    aspect2d coords: x = -aspect..+aspect, z = -1..+1
-    """
+
     aspect = engine.getAspectRatio()
     pos_x  = -aspect + MAP_SCALE + 0.02
     pos_z  =  1.0    - MAP_SCALE - 0.02

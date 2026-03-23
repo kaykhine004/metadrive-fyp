@@ -1,14 +1,5 @@
 #!/usr/bin/env python
-"""
-This script demonstrates how to setup the Safe RL environments with a 2D top-down
-road map overlay displayed inside the same 3D render window (top-left corner).
-START (blue) and END (red) markers are drawn on the map alongside a live green arrow
-tracking the agent.
 
-Please feel free to run this script to enjoy a journey by keyboard! Remember to press H to see help message!
-
-Auto-Drive mode may fail to solve some scenarios due to distribution mismatch.
-"""
 import math
 
 import cv2
@@ -29,18 +20,7 @@ logger = get_logger()
 
 
 class StuckAwareExpertPolicy(ExpertPolicy):
-    """
-    ExpertPolicy with two-tier early obstacle detection:
 
-    Tier 1 — FAST (reacts before crash):
-        If speed drops below SLOW_SPEED_KMH for SLOW_CONSECUTIVE_STEPS
-        consecutive steps (~1 s), IDM takes over immediately.
-        This catches braking/deceleration before the vehicle reaches the obstacle.
-
-    Tier 2 — SLOW (catches anything the fast check missed):
-        If the vehicle moves less than STUCK_DIST_M over STUCK_WINDOW_STEPS
-        steps (~3 s), IDM takes over.
-    """
     # Fast tier — triggers ~1 s after vehicle starts slowing sharply
     SLOW_SPEED_KMH       = 8.0   # km/h — below this = approaching/stopped
     SLOW_CONSECUTIVE_STEPS = 10  # ~1 s at 0.1 s/step
