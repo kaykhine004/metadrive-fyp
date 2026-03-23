@@ -1,14 +1,5 @@
 #!/usr/bin/env python
-"""
-This script demonstrates how to setup the Safe RL environments with a 2D top-down
-road map overlay displayed inside the same 3D render window (top-left corner).
-START (blue) and END (red) markers are drawn on the map alongside a live green arrow
-tracking the agent.
 
-Please feel free to run this script to enjoy a journey by keyboard! Remember to press H to see help message!
-
-Auto-Drive mode may fail to solve some scenarios due to distribution mismatch.
-"""
 import math
 
 import cv2
@@ -39,11 +30,7 @@ def format_mm_ss(total_seconds):
 
 
 def get_vehicle_color_text(agent):
-    """
-    Return the visual 3D color of the vehicle by reading its model path.
-    panda_color is NOT used — it is the minimap identifier color (always green
-    for the tracked agent) and does not reflect the actual 3D appearance.
-    """
+ 
     MODEL_COLORS = {
         "ferra":  "red",
         "beetle": "cream",
@@ -69,11 +56,7 @@ def build_map_surface(env):
 
 
 def get_start_end_positions(agent):
-    """
-    Return (start_xy, end_xy) world coordinates for the current episode.
-    start_xy : agent spawn position
-    end_xy   : end of the navigation's final lane (centre)
-    """
+
     start_xy = agent.spawn_place  # (x, y)
 
     nav = agent.navigation
@@ -85,7 +68,6 @@ def get_start_end_positions(agent):
 
 
 def draw_label(img, px, py, text, bg_color, text_color=(255, 255, 255)):
-    """Draw a filled rounded rectangle label at (px, py)."""
     font       = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.38
     thickness  = 1
@@ -102,10 +84,7 @@ def draw_label(img, px, py, text, bg_color, text_color=(255, 255, 255)):
 
 
 def build_static_map_with_markers(base_img, surface, start_xy, end_xy):
-    """
-    Draw START and END markers on a copy of the base map.
-    This image is stored once per episode — only the agent arrow is redrawn each step.
-    """
+
     img = base_img.copy()
 
     # Convert BGR base map to BGR (base_img is RGB from WorldSurface)

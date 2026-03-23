@@ -1,18 +1,5 @@
 #!/usr/bin/env python
-"""
-This script demonstrates how to setup the Safe RL environments with TrajectoryIDMPolicy.
 
-TrajectoryIDMPolicy: The ego vehicle follows a pre-built PointLane trajectory with IDM speed control.
-Traffic vehicles use standard IDMPolicy. This allows the ego to drive along logged/planned trajectories
-while controlling speed reactively (emergency brakes, maintaining distance from vehicles ahead).
-
-Sometimes we want the replayed traffic vehicles to be reactive, as the behavior of the ego car may change
-and be different from the logged one. TrajectoryIDMPolicy allows driving along trajectories but controls
-speed according to IDM policy, performing emergency brakes and maintaining distance from the car in front.
-
-The script also displays a 2D top-down road map overlay with START (blue), END (red) markers
-and a live green arrow tracking the agent.
-"""
 import math
 import os
 import time
